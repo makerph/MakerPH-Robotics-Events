@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MakerPH Robotics Competition Event Calendar
- * Description: Manage upcoming/recent robotics events with automated WooCommerce integration.
- * Version: 1.1.1
+ * Description: Manage upcoming and recent robotics events Page.
+ * Version: 1.1.2
  * Author: MakerPH Electronics
  */
 
@@ -10,8 +10,8 @@ if (!defined('ABSPATH')) exit;
 
 // --- PLUGIN CONSTANTS ---
 define('RCM_PLUGIN_NAME', 'MakerPH Robotics Competition Event Calendar');
-define('RCM_PLUGIN_VERSION', '1.1.1');
-define('RCM_PLUGIN_DESC', 'Manage upcoming and recent robotics events with social sharing');
+define('RCM_PLUGIN_VERSION', '1.1.2');
+define('RCM_PLUGIN_DESC', 'Manage upcoming and recent robotics events with automated WooCommerce integration.');
 
 // 1. Register Custom Post Type
 add_action('init', 'rcm_register_event_cpt');
@@ -110,7 +110,6 @@ function rcm_render_table($type, $today) {
                 <th style="padding:15px;">Poster</th>
                 <th style="padding:15px;">Venue</th>
                 ' . ($type == 'upcoming' ? '<th style="padding:15px;">Registration</th>' : '') . '
-                <th style="padding:15px;">Share</th>
               </tr></thead><tbody>';
 
     while ($query->have_posts()) {
@@ -128,8 +127,6 @@ function rcm_render_table($type, $today) {
             $html .= '<td style="padding:15px;">' . esc_html(get_post_meta($id, '_reg_date', true)) . '</td>';
         }
         
-        $share = function_exists('sharing_display') ? sharing_display('', false) : '—';
-        $html .= '<td style="padding:15px;">' . $share . '</td>';
         $html .= '</tr>';
     }
     $html .= '</tbody></table></div>';
