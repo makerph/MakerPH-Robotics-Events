@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MakerPH Robotics Competition Event Calendar
  * Description: Manage upcoming and recent robotics events with date range support.
- * Version: 1.1.5
+ * Version: 1.1.6
  * Author: MakerPH Electronics
  */
 
@@ -10,8 +10,8 @@ if (!defined('ABSPATH')) exit;
 
 // --- PLUGIN CONSTANTS ---
 define('RCM_PLUGIN_NAME', 'MakerPH Robotics Competition Event Calendar');
-define('RCM_PLUGIN_VERSION', '1.1.5');
-define('RCM_PLUGIN_DESC', 'Manage upcoming and recent robotics events with automated WooCommerce integration and date ranges.');
+define('RCM_PLUGIN_VERSION', '1.1.6');
+define('RCM_PLUGIN_DESC', 'Manage upcoming and recent robotics events. Events also visible at User Dashboards');
 
 // 1. Register Custom Post Type
 add_action('init', 'rcm_register_event_cpt');
@@ -96,6 +96,9 @@ add_action('woocommerce_after_shop_loop', 'rcm_inject_to_woo');
 add_action('woocommerce_account_dashboard', 'rcm_inject_to_woo');
 
 function rcm_inject_to_woo() {
+    if ( is_front_page() || is_home() ) {
+        return;
+    }
     echo '<div class="rcm-woo-section" style="clear:both; margin-top: 60px; padding-top: 30px; border-top: 1px solid #ddd;">';
     echo rcm_display_events();
     echo '</div>';
