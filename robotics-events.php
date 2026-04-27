@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MakerPH Robotics Competition Event Calendar
- * Description: Manage upcoming and recent robotics events Page.
- * Version: 1.1.2
+ * Description: Manage upcoming and recent robotics events with date range support.
+ * Version: 1.1.3
  * Author: MakerPH Electronics
  */
 
@@ -10,8 +10,8 @@ if (!defined('ABSPATH')) exit;
 
 // --- PLUGIN CONSTANTS ---
 define('RCM_PLUGIN_NAME', 'MakerPH Robotics Competition Event Calendar');
-define('RCM_PLUGIN_VERSION', '1.1.2');
-define('RCM_PLUGIN_DESC', 'Manage upcoming and recent robotics events with automated WooCommerce integration.');
+define('RCM_PLUGIN_VERSION', '1.1.3');
+define('RCM_PLUGIN_DESC', 'Manage upcoming and recent robotics events with automated WooCommerce integration and date ranges.');
 
 // 1. Register Custom Post Type
 add_action('init', 'rcm_register_event_cpt');
@@ -34,32 +34,55 @@ add_action('add_meta_boxes', function() {
 
 function rcm_event_meta_html($post) {
     $venue = get_post_meta($post->ID, '_event_venue', true);
-    $event_date = get_post_meta($post->ID, '_event_date', true);
+    $start_date = get_post_meta($post->ID, '_event_date', true);
+    $end_date = get_post_meta($post->ID, '_event_end_date', true);
     $reg_date = get_post_meta($post->ID, '_reg_date', true);
     ?>
     <p><strong>Venue:</strong> <input type="text" name="event_venue" value="<?php echo esc_attr($venue); ?>" class="widefat"></p>
-    <p><strong>Event Date:</strong> <input type="date" name="event_date" value="<?php echo esc_attr($event_date); ?>"></p>
-    <p><strong>Registration Deadline:</strong> <input type="date" name="reg_date" value="<?php echo esc_attr($reg_date); ?>"></p>
+    <div style="display: flex; gap: 20px;">
+        <p><strong>Start Date:</strong><br><input type="date" name="event_date" value="<?php echo esc_attr($start_date); ?>"></p>
+        <p><strong>End Date (Optional):</strong><br><input type="date" name="event_end_date" value="<?php echo esc_attr($end_date); ?>"></p>
+    </div>
+    <p><strong>Registration Deadline:</strong><br><input type="date" name="reg_date" value="<?php echo esc_attr($reg_date); ?>"></p>
+    <p><small><i>Note: If it is a one-day event, you can leave End Date blank.</i></small></p>
     <?php
 }
 
 add_action('save_post', function($post_id) {
     if (isset($_POST['event_venue'])) update_post_meta($post_id, '_event_venue', $_POST['event_venue']);
     if (isset($_POST['event_date'])) update_post_meta($post_id, '_event_date', $_POST['event_date']);
+    if (isset($_POST['event_end_date'])) update_post_meta($post_id, '_event_end_date', $_POST['event_end_date']);
     if (isset($_POST['reg_date'])) update_post_meta($post_id, '_reg_date', $_POST['reg_date']);
 });
 
-// 3. Show Event Meta on the Event Post Page
+// 3. Helper function to format date ranges
+function rcm_get_formatted_date_range($start, $end) {
+    if (!$start) return '—';
+    if (!$end || $start === $end) return date('M j, Y', strtotime($start));
+    
+    $s = strtotime($start);
+    $e = strtotime($end);
+    
+    // If same month/year: "May 10 - 12, 2026"
+    if (date('M Y', $s) === date('M Y', $e)) {
+        return date('M j', $s) . ' – ' . date('j, Y', $e);
+    }
+    // Default: "May 30 - June 2, 2026"
+    return date('M j', $s) . ' – ' . date('M j, Y', $e);
+}
+
+// 4. Show Event Meta on the Event Post Page
 add_filter('the_content', 'rcm_append_event_info');
 function rcm_append_event_info($content) {
     if (is_singular('robotics_event')) {
-        $event_date = get_post_meta(get_the_ID(), '_event_date', true);
-        $reg_date = get_post_meta(get_the_ID(), '_reg_date', true);
+        $start = get_post_meta(get_the_ID(), '_event_date', true);
+        $end = get_post_meta(get_the_ID(), '_event_end_date', true);
+        $reg = get_post_meta(get_the_ID(), '_reg_date', true);
         $venue = get_post_meta(get_the_ID(), '_event_venue', true);
 
         $info_html = '<div class="rcm-event-card" style="background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 6px solid #222; margin-bottom: 25px;">';
-        if ($event_date) $info_html .= '<strong>📅 Date:</strong> ' . date('F j, Y', strtotime($event_date)) . '<br>';
-        if ($reg_date) $info_html .= '<strong>⏳ Registration Ends:</strong> ' . date('F j, Y', strtotime($reg_date)) . '<br>';
+        $info_html .= '<strong>📅 Date:</strong> ' . rcm_get_formatted_date_range($start, $end) . '<br>';
+        if ($reg) $info_html .= '<strong>⏳ Registration Ends:</strong> ' . date('F j, Y', strtotime($reg)) . '<br>';
         if ($venue) $info_html .= '<strong>📍 Venue:</strong> ' . esc_html($venue);
         $info_html .= '</div>';
 
@@ -68,7 +91,7 @@ function rcm_append_event_info($content) {
     return $content;
 }
 
-// 4. WooCommerce Hooks (Shop & My Account)
+// 5. WooCommerce Hooks
 add_action('woocommerce_after_shop_loop', 'rcm_inject_to_woo');
 add_action('woocommerce_account_dashboard', 'rcm_inject_to_woo');
 
@@ -78,7 +101,7 @@ function rcm_inject_to_woo() {
     echo '</div>';
 }
 
-// 5. Shortcode and Rendering
+// 6. Shortcode and Rendering
 add_shortcode('robotics_events', 'rcm_display_events');
 function rcm_display_events() {
     $today = current_time('Y-m-d');
@@ -90,18 +113,36 @@ function rcm_display_events() {
 }
 
 function rcm_render_table($type, $today) {
-    $compare = ($type == 'upcoming') ? '>=' : '<';
+    // If upcoming: Show if Start Date >= Today OR End Date >= Today
+    // If recent: Show if both Start and End dates are < Today
     $args = [
         'post_type' => 'robotics_event',
-        'posts_per_page' => 5,
+        'posts_per_page' => 10,
         'meta_key' => '_event_date',
         'orderby' => 'meta_value',
         'order' => ($type == 'upcoming') ? 'ASC' : 'DESC',
-        'meta_query' => [['key' => '_event_date', 'value' => $today, 'compare' => $compare, 'type' => 'DATE']]
     ];
 
+    if ($type == 'upcoming') {
+        $args['meta_query'] = [
+            'relation' => 'OR',
+            ['key' => '_event_date', 'value' => $today, 'compare' => '>=', 'type' => 'DATE'],
+            ['key' => '_event_end_date', 'value' => $today, 'compare' => '>=', 'type' => 'DATE']
+        ];
+    } else {
+        $args['meta_query'] = [
+            'relation' => 'AND',
+            ['key' => '_event_date', 'value' => $today, 'compare' => '<', 'type' => 'DATE'],
+            // Check end date only if it exists; otherwise rely on start date
+            ['relation' => 'OR',
+                ['key' => '_event_end_date', 'value' => $today, 'compare' => '<', 'type' => 'DATE'],
+                ['key' => '_event_end_date', 'value' => '', 'compare' => '=']
+            ]
+        ];
+    }
+
     $query = new WP_Query($args);
-    if (!$query->have_posts()) return '<p>No events to display at the moment.</p>';
+    if (!$query->have_posts()) return '<p>No events to display.</p>';
 
     $html = '<div style="overflow-x:auto;"><table style="width:100%; border-collapse: collapse; margin-top: 15px;">';
     $html .= '<thead style="background:#000; color:#fff; text-align: left;"><tr>
@@ -109,24 +150,26 @@ function rcm_render_table($type, $today) {
                 <th style="padding:15px;">Competition</th>
                 <th style="padding:15px;">Poster</th>
                 <th style="padding:15px;">Venue</th>
-                ' . ($type == 'upcoming' ? '<th style="padding:15px;">Registration</th>' : '') . '
+                ' . ($type == 'upcoming' ? '<th style="padding:15px;">Registration Ends</th>' : '') . '
               </tr></thead><tbody>';
 
     while ($query->have_posts()) {
         $query->the_post();
         $id = get_the_ID();
+        $start = get_post_meta($id, '_event_date', true);
+        $end = get_post_meta($id, '_event_end_date', true);
         $img = get_the_post_thumbnail_url($id, 'thumbnail') ?: 'https://via.placeholder.com/60';
         
         $html .= '<tr style="border-bottom: 1px solid #eee;">';
-        $html .= '<td style="padding:15px;">' . esc_html(get_post_meta($id, '_event_date', true)) . '</td>';
+        $html .= '<td style="padding:15px;">' . rcm_get_formatted_date_range($start, $end) . '</td>';
         $html .= '<td style="padding:15px;"><a href="'.get_permalink().'" style="color:#000; font-weight:bold;">' . get_the_title() . '</a></td>';
         $html .= '<td style="padding:15px;"><img src="'.$img.'" style="width:60px; border-radius:3px;"></td>';
         $html .= '<td style="padding:15px;">' . esc_html(get_post_meta($id, '_event_venue', true)) . '</td>';
         
         if ($type == 'upcoming') {
-            $html .= '<td style="padding:15px;">' . esc_html(get_post_meta($id, '_reg_date', true)) . '</td>';
+            $reg = get_post_meta($id, '_reg_date', true);
+            $html .= '<td style="padding:15px;">' . ($reg ? date('M j, Y', strtotime($reg)) : '—') . '</td>';
         }
-        
         $html .= '</tr>';
     }
     $html .= '</tbody></table></div>';
